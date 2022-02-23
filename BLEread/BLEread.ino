@@ -84,7 +84,6 @@ bool timeUpdated = false;
 void setup() {
   IMU.begin();
   Serial.begin(9600); 
-  //while (!Serial);
   
   // Pin Outputs 
   pinMode(LED_BUILTIN, OUTPUT);
