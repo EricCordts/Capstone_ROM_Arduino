@@ -11,7 +11,7 @@
 #define BLE_UUID_ARDUINO_TIMESTAMP                "1805"
 #define BLE_UUID_DATE_TIME                        "315f50e2-55c9-4b10-8b46-6c66957b4d98"
 #define BLE_UUID_MILLISECONDS                     "C8F88594-2217-0CA6-8F06-A4270B675D69"
-#define BLE_UUID_ARDUINO_MEASUREMENTS             "1e0f9d07-42fe-4b48-b405-38374e5f2d97"
+#define BLE_UUID_ARDUINO_MEASUREMENTS             "2a675dfb-a1b0-4c11-9ad1-031a84594196" //"1e0f9d07-42fe-4b48-b405-38374e5f2d97"
 #define BLE_UUID_SENSOR_DATA                      "d80de551-8403-4bae-9f78-4d2af89ff17b"
 /*
 #define BLE_UUID_ARDUINO_ACCEL                     "1e0f9d07-42fe-4b48-b405-38374e5f2d97"
@@ -65,7 +65,7 @@ union measurement_data
   {
     data_t data_total;
   };
-  uint8_t bytes[sizeof(date_time_t)];
+  uint8_t bytes[sizeof(data_t)];
 };
 
 union measurement_data accel_gyro_data;
@@ -131,7 +131,7 @@ bool setupBleMode()
   BLE.setLocalName(BLE_LOCAL_NAME);
 
   //set serivce 
-  BLE.setAdvertisedService(Arduino_timestamp);
+  BLE.setAdvertisedService(Arduino_measurements);
 
   //add characteristics and service
   //Timestamp
@@ -218,7 +218,7 @@ void read_Accel_Gyro() {
   }
   
   Sensor_data.writeValue(accel_gyro_data.bytes, sizeof accel_gyro_data.bytes);
-  
+  Serial.println(sizeof accel_gyro_data.bytes);
   //serial print for float values
   Serial.print("Accelometer float data X: ");
   Serial.print(fl_accel_x);
