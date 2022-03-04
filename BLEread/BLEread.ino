@@ -13,18 +13,8 @@
 #define BLE_UUID_MILLISECONDS                     "C8F88594-2217-0CA6-8F06-A4270B675D69"
 #define BLE_UUID_ARDUINO_MEASUREMENTS             "2a675dfb-a1b0-4c11-9ad1-031a84594196" //"1e0f9d07-42fe-4b48-b405-38374e5f2d97"
 #define BLE_UUID_SENSOR_DATA                      "d80de551-8403-4bae-9f78-4d2af89ff17b"
-/*
-#define BLE_UUID_ARDUINO_ACCEL                     "1e0f9d07-42fe-4b48-b405-38374e5f2d97"
-#define BLE_UUID_ACCEL_X                          "d80de551-8403-4bae-9f78-4d2af89ff17b"
-#define BLE_UUID_ACCEL_Y                          "fd32fada-2b1f-41b7-b9f0-2dd935cd23f3"
-#define BLE_UUID_ACCEL_Z                          "7b97c302-a7f6-4d96-ac29-484187af83d7"
-#define BLE_UUID_ARDUINO_GYRO                     "daf44635-bcc1-41b8-8837-c2492683898e"
-#define BLE_UUID_GYRO_X                           "74045b34-3207-4d06-a90a-e4579694cca8"
-#define BLE_UUID_GYRO_Y                           "fa0c104d-0824-49af-aba9-99d07609cd7d"
-#define BLE_UUID_GYRO_Z                           "286f5f54-30fb-45ad-a44a-b1217bd9935e"
-*/
 #define BLE_DEVICE_NAME                           "Arduino Nano 33 BLE"
-#define BLE_LOCAL_NAME                            "Arduino 2 (Nano 33 BLE)"
+#define BLE_LOCAL_NAME                            "Arduino 1 (Nano 33 BLE)"
 #define BLE_LED_PIN                               LED_BUILTIN
 
 //date_time Struct
@@ -73,12 +63,12 @@ union measurement_data accel_gyro_data;
 // Variable Initialization
 float fl_accel_x, fl_accel_y, fl_accel_z;
 float fl_gyro_x, fl_gyro_y, fl_gyro_z;
-
+/*
 //Timestamp Characteristics
 BLEService Arduino_timestamp(BLE_UUID_ARDUINO_TIMESTAMP);
 BLECharacteristic dateTimeCharacteristic(BLE_UUID_DATE_TIME, BLERead | BLEWrite | BLENotify, sizeof dateTimeData.bytes);
 BLEFloatCharacteristic millisecondsCharacteristic(BLE_UUID_MILLISECONDS, BLERead | BLENotify);
-
+*/
 //Measurement Characteristics
 BLEService Arduino_measurements(BLE_UUID_ARDUINO_MEASUREMENTS);
 BLECharacteristic Sensor_data(BLE_UUID_SENSOR_DATA , BLERead|BLENotify, sizeof accel_gyro_data.bytes);
@@ -115,7 +105,7 @@ void setup() {
 }
 
 void loop() {
-  timeTask();
+  //timeTask();
   bleTask();
 }
 
@@ -135,36 +125,38 @@ bool setupBleMode()
 
   //add characteristics and service
   //Timestamp
+  /*
   Arduino_timestamp.addCharacteristic(dateTimeCharacteristic);
   Arduino_timestamp.addCharacteristic(millisecondsCharacteristic);
   BLE.addService(Arduino_timestamp);
+  */
   //Sensor Data
   Arduino_measurements.addCharacteristic(Sensor_data);
   BLE.addService(Arduino_measurements);
 
 
   // set the initial value for the characeristics
-  dateTimeCharacteristic.writeValue(dateTimeData.bytes, sizeof dateTimeData.bytes);  
+  //dateTimeCharacteristic.writeValue(dateTimeData.bytes, sizeof dateTimeData.bytes);  
 
   //set BLE event handlers; this is like switch-case in c++
   BLE.setEventHandler(BLEConnected, bleConnectHandler);
   BLE.setEventHandler(BLEDisconnected, bleDisconnectHandler);
 
   //set service and characteristic specific event handlers
-  dateTimeCharacteristic.setEventHandler(BLEWritten, DateTimeWrittenHandler);
+  //dateTimeCharacteristic.setEventHandler(BLEWritten, DateTimeWrittenHandler);
 
   //start advertising
   BLE.advertise();
   return true;
 }
-
+/*
 //Handler Functions
 void DateTimeWrittenHandler(BLEDevice central, BLECharacteristic bleCharacteristic)
 {
   dateTimeCharacteristic.readValue(dateTimeData.bytes, sizeof dateTimeData.bytes);
   setTime(dateTimeData.dateTime);
 }
-
+*/
 void bleConnectHandler(BLEDevice central)
 {
   digitalWrite(BLE_LED_PIN, HIGH);
@@ -183,22 +175,23 @@ void bleTask()
 {
 #define BLE_UPDATE_INTERVAL 10
   read_Accel_Gyro();
+  
   static uint32_t previousMillis = 0;
   uint32_t currentMillis = millis();
   //Milliseconds Value
-  millisecondsCharacteristic.writeValue(currentMillis%1000);
+  //millisecondsCharacteristic.writeValue(currentMillis%1000);
 
   if (currentMillis - previousMillis >= BLE_UPDATE_INTERVAL)
   {
     previousMillis = currentMillis;
     BLE.poll();
   }
-
+  /*
   if (timeUpdated)
   {
     timeUpdated = false;
     dateTimeCharacteristic.writeValue(dateTimeData.bytes, sizeof dateTimeData.bytes);
-  }
+  }*/
 }
 
 void read_Accel_Gyro() {
@@ -249,7 +242,7 @@ void read_Accel_Gyro() {
   Serial.println(accel_gyro_data.data_total.gyroZ);
   
 }
-
+/*
 void timeTask()
 {
   #define TIME_UPDATE_INTERVAL 1000
@@ -295,3 +288,4 @@ void setTime(date_time_t time)
 
   set_time(mktime(&setTime));
 }
+*/
