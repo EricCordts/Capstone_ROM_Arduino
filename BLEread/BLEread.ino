@@ -11,16 +11,10 @@
 #define BLE_UUID_ARDUINO_TIMESTAMP                "1805"
 #define BLE_UUID_DATE_TIME                        "315f50e2-55c9-4b10-8b46-6c66957b4d98"
 #define BLE_UUID_MILLISECONDS                     "C8F88594-2217-0CA6-8F06-A4270B675D69"
-#define BLE_UUID_ARDUINO_ACCEL                     "1e0f9d07-42fe-4b48-b405-38374e5f2d97"
-#define BLE_UUID_ACCEL_X                          "d80de551-8403-4bae-9f78-4d2af89ff17b"
-#define BLE_UUID_ACCEL_Y                          "fd32fada-2b1f-41b7-b9f0-2dd935cd23f3"
-#define BLE_UUID_ACCEL_Z                          "7b97c302-a7f6-4d96-ac29-484187af83d7"
-#define BLE_UUID_ARDUINO_GYRO                     "daf44635-bcc1-41b8-8837-c2492683898e"
-#define BLE_UUID_GYRO_X                           "74045b34-3207-4d06-a90a-e4579694cca8"
-#define BLE_UUID_GYRO_Y                           "fa0c104d-0824-49af-aba9-99d07609cd7d"
-#define BLE_UUID_GYRO_Z                           "286f5f54-30fb-45ad-a44a-b1217bd9935e"
+#define BLE_UUID_ARDUINO_MEASUREMENTS             "2a675dfb-a1b0-4c11-9ad1-031a84594196" //"1e0f9d07-42fe-4b48-b405-38374e5f2d97"
+#define BLE_UUID_SENSOR_DATA                      "d80de551-8403-4bae-9f78-4d2af89ff17b"
 #define BLE_DEVICE_NAME                           "Arduino Nano 33 BLE"
-#define BLE_LOCAL_NAME                            "Arduino 2 (Nano 33 BLE)"
+#define BLE_LOCAL_NAME                            "Arduino 1 (Nano 33 BLE)"
 #define BLE_LED_PIN                               LED_BUILTIN
 
 //date_time Struct
@@ -45,29 +39,39 @@ union date_time_data
 
 union date_time_data dateTimeData;
 
-// Variable Initialization
-int accelX=1;
-int accelY=1;
-int accelZ=1;
-float accel_x, accel_y, accel_z;
-float gyro_x, gyro_y, gyro_z;
+typedef struct
+{
+  int16_t accelX;
+  int16_t accelY; 
+  int16_t accelZ;
+  int16_t gyroX;
+  int16_t gyroY;
+  int16_t gyroZ;
+} data_t;
+  
+union measurement_data
+{
+  struct
+  {
+    data_t data_total;
+  };
+  uint8_t bytes[sizeof(data_t)];
+};
 
+union measurement_data accel_gyro_data;
+
+// Variable Initialization
+float fl_accel_x, fl_accel_y, fl_accel_z;
+float fl_gyro_x, fl_gyro_y, fl_gyro_z;
+/*
 //Timestamp Characteristics
 BLEService Arduino_timestamp(BLE_UUID_ARDUINO_TIMESTAMP);
 BLECharacteristic dateTimeCharacteristic(BLE_UUID_DATE_TIME, BLERead | BLEWrite | BLENotify, sizeof dateTimeData.bytes);
 BLEFloatCharacteristic millisecondsCharacteristic(BLE_UUID_MILLISECONDS, BLERead | BLENotify);
-
-//Accelerometer Characteristics
-BLEService Arduino_Accel(BLE_UUID_ARDUINO_ACCEL);
-BLEUnsignedIntCharacteristic AccelXChar(BLE_UUID_ACCEL_X , BLERead | BLENotify); // X coordinate value
-BLEUnsignedIntCharacteristic AccelYChar(BLE_UUID_ACCEL_Y , BLERead | BLENotify); // Y coordinate value
-BLEUnsignedIntCharacteristic AccelZChar(BLE_UUID_ACCEL_Z , BLERead | BLENotify); // Z coordinate value
-
-//Gyroscope Characteristics 
-BLEService Arduino_Gyro(BLE_UUID_ARDUINO_GYRO);
-BLEFloatCharacteristic GyroXChar(BLE_UUID_GYRO_X, BLERead|BLENotify);
-BLEFloatCharacteristic GyroYChar(BLE_UUID_GYRO_Y, BLERead|BLENotify);
-BLEFloatCharacteristic GyroZChar(BLE_UUID_GYRO_Z, BLERead|BLENotify);
+*/
+//Measurement Characteristics
+BLEService Arduino_measurements(BLE_UUID_ARDUINO_MEASUREMENTS);
+BLECharacteristic Sensor_data(BLE_UUID_SENSOR_DATA , BLERead|BLENotify, sizeof accel_gyro_data.bytes);
 
 //function declarations:
 bool setupBleMode();
@@ -101,7 +105,7 @@ void setup() {
 }
 
 void loop() {
-  timeTask();
+  //timeTask();
   bleTask();
 }
 
@@ -117,54 +121,42 @@ bool setupBleMode()
   BLE.setLocalName(BLE_LOCAL_NAME);
 
   //set serivce 
-  BLE.setAdvertisedService(Arduino_timestamp);
+  BLE.setAdvertisedService(Arduino_measurements);
 
   //add characteristics and service
   //Timestamp
+  /*
   Arduino_timestamp.addCharacteristic(dateTimeCharacteristic);
   Arduino_timestamp.addCharacteristic(millisecondsCharacteristic);
   BLE.addService(Arduino_timestamp);
+  */
+  //Sensor Data
+  Arduino_measurements.addCharacteristic(Sensor_data);
+  BLE.addService(Arduino_measurements);
 
-  //Accelerometer
-  Arduino_Accel.addCharacteristic(AccelXChar);
-  Arduino_Accel.addCharacteristic(AccelYChar);
-  Arduino_Accel.addCharacteristic(AccelZChar);
-  BLE.addService(Arduino_Accel);
 
-  //Gyroscope
-  Arduino_Gyro.addCharacteristic(GyroXChar);
-  Arduino_Gyro.addCharacteristic(GyroYChar);
-  Arduino_Gyro.addCharacteristic(GyroZChar);
-  BLE.addService(Arduino_Gyro);
-  
   // set the initial value for the characeristics
-  dateTimeCharacteristic.writeValue(dateTimeData.bytes, sizeof dateTimeData.bytes);  
-  AccelXChar.writeValue(accelX);
-  AccelYChar.writeValue(accelY);
-  AccelZChar.writeValue(accelZ);
-  GyroXChar.writeValue(1.00);
-  GyroYChar.writeValue(1.00);
-  GyroZChar.writeValue(1.00);
+  //dateTimeCharacteristic.writeValue(dateTimeData.bytes, sizeof dateTimeData.bytes);  
 
   //set BLE event handlers; this is like switch-case in c++
   BLE.setEventHandler(BLEConnected, bleConnectHandler);
   BLE.setEventHandler(BLEDisconnected, bleDisconnectHandler);
 
   //set service and characteristic specific event handlers
-  dateTimeCharacteristic.setEventHandler(BLEWritten, DateTimeWrittenHandler);
+  //dateTimeCharacteristic.setEventHandler(BLEWritten, DateTimeWrittenHandler);
 
   //start advertising
   BLE.advertise();
   return true;
 }
-
+/*
 //Handler Functions
 void DateTimeWrittenHandler(BLEDevice central, BLECharacteristic bleCharacteristic)
 {
   dateTimeCharacteristic.readValue(dateTimeData.bytes, sizeof dateTimeData.bytes);
   setTime(dateTimeData.dateTime);
 }
-
+*/
 void bleConnectHandler(BLEDevice central)
 {
   digitalWrite(BLE_LED_PIN, HIGH);
@@ -182,50 +174,75 @@ void bleDisconnectHandler(BLEDevice central)
 void bleTask()
 {
 #define BLE_UPDATE_INTERVAL 10
-  read_Accel();
-  read_Gyro();
+  read_Accel_Gyro();
+  
   static uint32_t previousMillis = 0;
   uint32_t currentMillis = millis();
   //Milliseconds Value
-  millisecondsCharacteristic.writeValue(currentMillis%1000);
+  //millisecondsCharacteristic.writeValue(currentMillis%1000);
 
   if (currentMillis - previousMillis >= BLE_UPDATE_INTERVAL)
   {
     previousMillis = currentMillis;
     BLE.poll();
   }
-
+  /*
   if (timeUpdated)
   {
     timeUpdated = false;
     dateTimeCharacteristic.writeValue(dateTimeData.bytes, sizeof dateTimeData.bytes);
-  }
+  }*/
 }
 
-void read_Accel() {
+void read_Accel_Gyro() {
   if (IMU.accelerationAvailable())
   {
-    IMU.readAcceleration(accel_x, accel_y, accel_z);
-    accelX = (1+accel_x)*100;
-    accelY = (1+accel_y)*100;
-    accelZ = (1+accel_z)*100;
+    IMU.readAcceleration(fl_accel_x, fl_accel_y, fl_accel_z);
+    accel_gyro_data.data_total.accelX = fl_accel_x*100;
+    accel_gyro_data.data_total.accelY = fl_accel_y*100;
+    accel_gyro_data.data_total.accelZ = fl_accel_z*100;
   }
-
-  AccelXChar.writeValue(accelX);
-  AccelYChar.writeValue(accelY);
-  AccelZChar.writeValue(accelZ);
-}
-
-void read_Gyro(){
-  if (IMU.gyroscopeAvailable()) {
-    IMU.readGyroscope(gyro_x, gyro_y, gyro_z);
+  if (IMU.gyroscopeAvailable())
+  {
+    IMU.readGyroscope(fl_gyro_x, fl_gyro_y, fl_gyro_z);
+    accel_gyro_data.data_total.gyroX = fl_gyro_x*10;
+    accel_gyro_data.data_total.gyroY = fl_gyro_y*10;
+    accel_gyro_data.data_total.gyroZ = fl_gyro_z*10;
   }
   
-  GyroXChar.writeValue(gyro_x);
-  GyroYChar.writeValue(gyro_y);
-  GyroZChar.writeValue(gyro_z);
-
+  Sensor_data.writeValue(accel_gyro_data.bytes, sizeof accel_gyro_data.bytes);
+  Serial.println(sizeof accel_gyro_data.bytes);
+  //serial print for float values
+  Serial.print("Accelometer float data X: ");
+  Serial.print(fl_accel_x);
+  Serial.print(" Y: ");
+  Serial.print(fl_accel_y);
+  Serial.print(" Z: ");
+  Serial.println(fl_accel_z);
+  Serial.print("Gyroscope float data X: ");
+  Serial.print(fl_gyro_x);
+  Serial.print(" Y: ");
+  Serial.print(fl_gyro_y);
+  Serial.print(" Z: ");
+  Serial.println(fl_gyro_z);
+  
+  
+  //serial print for int16_t
+  Serial.print("Accelometer data X: ");
+  Serial.print(accel_gyro_data.data_total.accelX);
+  Serial.print(" Y: ");
+  Serial.print(accel_gyro_data.data_total.accelY);
+  Serial.print(" Z: ");
+  Serial.println(accel_gyro_data.data_total.accelZ);
+  Serial.print("Gyroscope data X: ");
+  Serial.print(accel_gyro_data.data_total.gyroX);
+  Serial.print(" Y: ");
+  Serial.print(accel_gyro_data.data_total.gyroY);
+  Serial.print(" Z: ");
+  Serial.println(accel_gyro_data.data_total.gyroZ);
+  
 }
+/*
 void timeTask()
 {
   #define TIME_UPDATE_INTERVAL 1000
@@ -271,3 +288,4 @@ void setTime(date_time_t time)
 
   set_time(mktime(&setTime));
 }
+*/
