@@ -1,52 +1,36 @@
 // Capstone Arduino Program 
-
 #include <ArduinoBLE.h>
-#include <Arduino_LSM9DS1.h>
-
 //need mbed.h for clock functions
 #include <mbed.h>
+#include "Wire.h"
+#include <SPI.h>
 
+// See also LSM9DS1 Register Map and Descriptions, http://www.st.com/st-web-ui/static/active/en/resource/technical/document/datasheet/DM00103319.pdf 
+// Accelerometer and Gyroscope registers
+#define LSM9DS1XG_WHO_AM_I          0x0F  // should return 0x68
+#define LSM9DS1XG_CTRL_REG1_G       0x10
+#define LSM9DS1XG_STATUS_REG        0x17
+#define LSM9DS1XG_OUT_X_L_G         0x18
+#define LSM9DS1XG_CTRL_REG4         0x1E
+#define LSM9DS1XG_CTRL_REG5_XL      0x1F
+#define LSM9DS1XG_CTRL_REG6_XL      0x20
+#define LSM9DS1XG_CTRL_REG8         0x22
+#define LSM9DS1XG_CTRL_REG9         0x23
+#define LSM9DS1XG_CTRL_REG10        0x24
+#define LSM9DS1XG_OUT_X_L_XL        0x28
+#define LSM9DS1XG_FIFO_CTRL         0x2E
+#define LSM9DS1XG_FIFO_SRC          0x2F
 
-//define UUID
-#define BLE_UUID_ARDUINO_TIMESTAMP                "1805"
-#define BLE_UUID_DATE_TIME                        "315f50e2-55c9-4b10-8b46-6c66957b4d98"
-#define BLE_UUID_MILLISECONDS                     "C8F88594-2217-0CA6-8F06-A4270B675D69"
-#define BLE_UUID_ARDUINO_MEASUREMENTS             "2a675dfb-a1b0-4c11-9ad1-031a84594196" //"1e0f9d07-42fe-4b48-b405-38374e5f2d97"
-#define BLE_UUID_SENSOR_DATA                      "d80de551-8403-4bae-9f78-4d2af89ff17b"
-#define BLE_DEVICE_NAME                           "Arduino Nano 33 BLE"
-#define BLE_LOCAL_NAME                            "Arduino 1 (Nano 33 BLE)"
-#define BLE_LED_PIN                               LED_BUILTIN
-
-//date_time Struct
-typedef struct __attribute__((packed))
-{
-  //uint16_t year;
-  uint8_t month;
-  uint8_t day;
-  uint8_t hours;
-  uint8_t minutes;
-  uint8_t seconds;
-} date_time_t;
-
-union date_time_data
-{
-  struct __attribute__((packed))
-  {
-    date_time_t dateTime;
-  };
-  uint8_t bytes[sizeof(date_time_t)];
-};
-
-union date_time_data dateTimeData;
+#define LSM9DS1XG_ADDRESS 0x6B  //  Device address
 
 typedef struct
 {
-  int16_t accelX;
-  int16_t accelY; 
-  int16_t accelZ;
-  int16_t gyroX;
-  int16_t gyroY;
-  int16_t gyroZ;
+  int16_t ax;
+  int16_t ay; 
+  int16_t az;
+  int16_t gx;
+  int16_t gy;
+  int16_t gz;
 } data_t;
   
 union measurement_data
@@ -59,39 +43,90 @@ union measurement_data
 };
 
 union measurement_data accel_gyro_data;
+//===================================================================================================================
+//====== Set of useful function to access acceleration and gyroscope data
+//===================================================================================================================
 
-// Variable Initialization
-float fl_accel_x, fl_accel_y, fl_accel_z;
-float fl_gyro_x, fl_gyro_y, fl_gyro_z;
-/*
-//Timestamp Characteristics
-BLEService Arduino_timestamp(BLE_UUID_ARDUINO_TIMESTAMP);
-BLECharacteristic dateTimeCharacteristic(BLE_UUID_DATE_TIME, BLERead | BLEWrite | BLENotify, sizeof dateTimeData.bytes);
-BLEFloatCharacteristic millisecondsCharacteristic(BLE_UUID_MILLISECONDS, BLERead | BLENotify);
-*/
+enum Ascale: uint8_t {AFS_2G=0, AFS_16G, AFS_4G, AFS_8G}; // set of allowable accel full scale settings
+enum Aodr: uint8_t {AODR_PowerDown=0, AODR_10Hz, AODR_50Hz, AODR_119Hz, AODR_238Hz, AODR_476Hz, AODR_952Hz}; // set of allowable gyro sample rates
+enum Abw: uint8_t {ABW_408Hz=0, ABW_211Hz, ABW_105Hz, ABW_50Hz}; // set of allowable accewl bandwidths
+enum Gscale: uint8_t {GFS_245DPS=0, GFS_500DPS, GFS_NoOp, GFS_2000DPS}; // set of allowable gyro full scale settings
+enum Godr: uint8_t {GODR_PowerDown=0, GODR_14_9Hz, GODR_59_5Hz, GODR_119Hz, GODR_238Hz, GODR_476Hz, GODR_952Hz}; // set of allowable gyro sample rates
+enum Gbw: uint8_t {GBW_low=0, GBW_med, GBW_high, GBW_highest}; // set of allowable gyro data bandwidths (Hz): low: 14@238, 33@952; med: 29@238, 40@952; high: 63@238, 58@952; highest 78@238, 100@952
+
+Ascale ascale = AFS_4G;      // accel full scale
+Aodr aodr = AODR_238Hz;      // accel data sample rate
+Abw abw = ABW_50Hz;          // accel data bandwidth
+Gscale gscale = GFS_500DPS;  // gyro full scale
+Godr godr = GODR_238Hz;      // gyro data sample rate
+Gbw gbw = GBW_med;           // gyro data bandwidth
+
+//define UUID
+#define BLE_UUID_ARDUINO_TIMESTAMP                "1805"
+#define BLE_UUID_ARDUINO_MEASUREMENTS             "2a675dfb-a1b0-4c11-9ad1-031a84594196" //"1e0f9d07-42fe-4b48-b405-38374e5f2d97"
+#define BLE_UUID_SENSOR_DATA                      "d80de551-8403-4bae-9f78-4d2af89ff17b"
+#define BLE_DEVICE_NAME                           "Arduino Nano 33 BLE"
+#define BLE_LOCAL_NAME                            "Arduino 2 (Nano 33 BLE)"
+#define BLE_LED_PIN                               LED_BUILTIN
 //Measurement Characteristics
 BLEService Arduino_measurements(BLE_UUID_ARDUINO_MEASUREMENTS);
 BLECharacteristic Sensor_data(BLE_UUID_SENSOR_DATA , BLERead|BLENotify, sizeof accel_gyro_data.bytes);
 
+uint8_t readByte(uint8_t address, uint8_t subAddress) {
+  uint8_t data; // `data` will store the register data   
+  Wire1.beginTransmission(address);         // Initialize the Tx buffer
+  Wire1.write(subAddress);                  // Put slave register address in Tx buffer
+  Wire1.endTransmission(false);             // Send the Tx buffer, but send a restart to keep connection alive
+  Wire1.requestFrom(address, (size_t) 1);   // Read one byte from slave register address 
+  data = Wire1.read();                      // Fill Rx buffer with result
+  return data;                              // Return data read from slave register
+}
+
+void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * dest) {
+  Wire1.beginTransmission(address);   // Initialize the Tx buffer
+  Wire1.write(subAddress);            // Put slave register address in Tx buffer
+  Wire1.endTransmission(false);       // Send the Tx buffer, but send a restart to keep connection alive
+  uint8_t i = 0;
+  Wire1.requestFrom(address, count);  // Read bytes from slave register address 
+  while (Wire1.available()){ 
+    dest[i++] = Wire1.read(); 
+    }         // Put read results in the Rx buffer
+}
+
+void writeByte(uint8_t address, uint8_t subAddress, uint8_t data) {
+  Wire1.beginTransmission(address);  // Initialize the Tx buffer
+  Wire1.write(subAddress);           // Put slave register address in Tx buffer
+  Wire1.write(data);                 // Put data in Tx buffer
+  Wire1.endTransmission();           // Send the Tx buffer
+}
+
 //function declarations:
 bool setupBleMode();
 void bleTask();
-void DateTimeWrittenHandler(BLEDevice central, BLECharacteristic bleCharacteristic);
 void bleConnectHandler(BLEDevice central);
 void bleDisconnectHandler(BLEDevice central);
-void timeTask();
 void initializeClock(void);
-void setTime(date_time_t time);
-
-bool timeUpdated = false;
+void read_Accel_Gyro();
 
 void setup() {
-  IMU.begin();
+  Wire1.begin();
+  writeByte(LSM9DS1XG_ADDRESS, LSM9DS1XG_CTRL_REG8, 0x05);
+  delay(100);
   Serial.begin(9600); 
   
   // Pin Outputs 
   pinMode(LED_BUILTIN, OUTPUT);
-
+  digitalWrite(LED_BUILTIN, HIGH);
+  
+  // initialize LSM9DS1
+  writeByte(LSM9DS1XG_ADDRESS, LSM9DS1XG_CTRL_REG4, 0x38); // enable the 3-axes of the gyroscope
+  writeByte(LSM9DS1XG_ADDRESS, LSM9DS1XG_CTRL_REG1_G, godr << 5 | gscale << 3 | gbw);
+  delay(200);
+  writeByte(LSM9DS1XG_ADDRESS, LSM9DS1XG_CTRL_REG5_XL, 0x38); // enable the three axes of the accelerometer
+  writeByte(LSM9DS1XG_ADDRESS, LSM9DS1XG_CTRL_REG6_XL, aodr << 5 | ascale << 3 | 0x04 |abw);
+  delay(200);
+  writeByte(LSM9DS1XG_ADDRESS, LSM9DS1XG_CTRL_REG8, 0x44); // enable block data update, allow auto-increment during multiple byte read
+  
   // Check Initialization of BLE service
   if (!setupBleMode())
   {
@@ -105,7 +140,6 @@ void setup() {
 }
 
 void loop() {
-  //timeTask();
   bleTask();
 }
 
@@ -123,40 +157,19 @@ bool setupBleMode()
   //set serivce 
   BLE.setAdvertisedService(Arduino_measurements);
 
-  //add characteristics and service
-  //Timestamp
-  /*
-  Arduino_timestamp.addCharacteristic(dateTimeCharacteristic);
-  Arduino_timestamp.addCharacteristic(millisecondsCharacteristic);
-  BLE.addService(Arduino_timestamp);
-  */
   //Sensor Data
   Arduino_measurements.addCharacteristic(Sensor_data);
   BLE.addService(Arduino_measurements);
-
-
-  // set the initial value for the characeristics
-  //dateTimeCharacteristic.writeValue(dateTimeData.bytes, sizeof dateTimeData.bytes);  
 
   //set BLE event handlers; this is like switch-case in c++
   BLE.setEventHandler(BLEConnected, bleConnectHandler);
   BLE.setEventHandler(BLEDisconnected, bleDisconnectHandler);
 
-  //set service and characteristic specific event handlers
-  //dateTimeCharacteristic.setEventHandler(BLEWritten, DateTimeWrittenHandler);
-
   //start advertising
   BLE.advertise();
   return true;
 }
-/*
-//Handler Functions
-void DateTimeWrittenHandler(BLEDevice central, BLECharacteristic bleCharacteristic)
-{
-  dateTimeCharacteristic.readValue(dateTimeData.bytes, sizeof dateTimeData.bytes);
-  setTime(dateTimeData.dateTime);
-}
-*/
+
 void bleConnectHandler(BLEDevice central)
 {
   digitalWrite(BLE_LED_PIN, HIGH);
@@ -173,119 +186,45 @@ void bleDisconnectHandler(BLEDevice central)
 
 void bleTask()
 {
-#define BLE_UPDATE_INTERVAL 10
+  #define BLE_UPDATE_INTERVAL 10
   read_Accel_Gyro();
   
   static uint32_t previousMillis = 0;
   uint32_t currentMillis = millis();
-  //Milliseconds Value
-  //millisecondsCharacteristic.writeValue(currentMillis%1000);
 
   if (currentMillis - previousMillis >= BLE_UPDATE_INTERVAL)
   {
     previousMillis = currentMillis;
     BLE.poll();
   }
-  /*
-  if (timeUpdated)
-  {
-    timeUpdated = false;
-    dateTimeCharacteristic.writeValue(dateTimeData.bytes, sizeof dateTimeData.bytes);
-  }*/
 }
 
 void read_Accel_Gyro() {
-  if (IMU.accelerationAvailable())
-  {
-    IMU.readAcceleration(fl_accel_x, fl_accel_y, fl_accel_z);
-    accel_gyro_data.data_total.accelX = fl_accel_x*100;
-    accel_gyro_data.data_total.accelY = fl_accel_y*100;
-    accel_gyro_data.data_total.accelZ = fl_accel_z*100;
-  }
-  if (IMU.gyroscopeAvailable())
-  {
-    IMU.readGyroscope(fl_gyro_x, fl_gyro_y, fl_gyro_z);
-    accel_gyro_data.data_total.gyroX = fl_gyro_x*10;
-    accel_gyro_data.data_total.gyroY = fl_gyro_y*10;
-    accel_gyro_data.data_total.gyroZ = fl_gyro_z*10;
+  if (readByte(LSM9DS1XG_ADDRESS, LSM9DS1XG_STATUS_REG) & 0x01) { 
+    readAccelint16();  // Read the x/y/z adc values
+    //Serial.print("a = ["); Serial.print(accel_gyro_data.data_total.ax); Serial.print(", "); Serial.print(accel_gyro_data.data_total.ay); Serial.print(", "); Serial.print(accel_gyro_data.data_total.az); Serial.println("] /32768");
   }
   
+  if (readByte(LSM9DS1XG_ADDRESS, LSM9DS1XG_STATUS_REG) & 0x02) {
+    readGyroint16();  // Read the x/y/z adc values 
+    Serial.print("g = ["); Serial.print(accel_gyro_data.data_total.gx); Serial.print(", "); Serial.print(accel_gyro_data.data_total.gy); Serial.print(", "); Serial.print(accel_gyro_data.data_total.gz); Serial.println("] /32768");
+  }
   Sensor_data.writeValue(accel_gyro_data.bytes, sizeof accel_gyro_data.bytes);
-  Serial.println(sizeof accel_gyro_data.bytes);
-  //serial print for float values
-  Serial.print("Accelometer float data X: ");
-  Serial.print(fl_accel_x);
-  Serial.print(" Y: ");
-  Serial.print(fl_accel_y);
-  Serial.print(" Z: ");
-  Serial.println(fl_accel_z);
-  Serial.print("Gyroscope float data X: ");
-  Serial.print(fl_gyro_x);
-  Serial.print(" Y: ");
-  Serial.print(fl_gyro_y);
-  Serial.print(" Z: ");
-  Serial.println(fl_gyro_z);
-  
-  
-  //serial print for int16_t
-  Serial.print("Accelometer data X: ");
-  Serial.print(accel_gyro_data.data_total.accelX);
-  Serial.print(" Y: ");
-  Serial.print(accel_gyro_data.data_total.accelY);
-  Serial.print(" Z: ");
-  Serial.println(accel_gyro_data.data_total.accelZ);
-  Serial.print("Gyroscope data X: ");
-  Serial.print(accel_gyro_data.data_total.gyroX);
-  Serial.print(" Y: ");
-  Serial.print(accel_gyro_data.data_total.gyroY);
-  Serial.print(" Z: ");
-  Serial.println(accel_gyro_data.data_total.gyroZ);
-  
-}
-/*
-void timeTask()
-{
-  #define TIME_UPDATE_INTERVAL 1000
-  static uint32_t previousMillis = 0;
-
-  unsigned long currentMillis = millis();
-  
-  if (currentMillis - previousMillis < TIME_UPDATE_INTERVAL)
-  {
-    return;
-  }
-  previousMillis = currentMillis;
-  time_t currentTime = time(NULL);
-  
-  struct tm * now = localtime(&currentTime);
-
-  dateTimeData.dateTime.month = now->tm_mon + 1;
-  dateTimeData.dateTime.day = now->tm_mday;
-  dateTimeData.dateTime.hours = now->tm_hour;
-  dateTimeData.dateTime.minutes = now->tm_min;
-  dateTimeData.dateTime.seconds = now->tm_sec;
-  
-  timeUpdated = true;
 }
 
-void initializeClock(void)
-{
-  //Jan 1 00:00:00
-  date_time_t dateTime = {1, 1, 0, 0, 0}; 
-  setTime(dateTime);
+
+void readAccelint16(){
+  uint8_t rawData[6];  // x/y/z accel register data stored here
+  readBytes(LSM9DS1XG_ADDRESS, LSM9DS1XG_OUT_X_L_XL, 6, &rawData[0]);  // Read the six raw data registers into data array
+  accel_gyro_data.data_total.ax = ((int16_t)rawData[1] << 8) | rawData[0];  // Turn the MSB and LSB into a signed 16-bit value
+  accel_gyro_data.data_total.ay = ((int16_t)rawData[3] << 8) | rawData[2];
+  accel_gyro_data.data_total.az = ((int16_t)rawData[5] << 8) | rawData[4];
 }
-
-void setTime(date_time_t time)
-{
-  //tm struct, mktime and set_time are predefined in C
-  struct tm setTime;
-
-  setTime.tm_mon = time.month - 1;      // month are from (0 - 11)
-  setTime.tm_mday = time.day;           // day of month (0 - 31)
-  setTime.tm_hour = time.hours;         // hour (0 - 23)
-  setTime.tm_min = time.minutes;        // minutes (0 - 59)
-  setTime.tm_sec = time.seconds;        // seconds (0 - 59)
-
-  set_time(mktime(&setTime));
+    
+void readGyroint16(){
+  uint8_t rawData[6];  // x/y/z gyro register data stored here
+  readBytes(LSM9DS1XG_ADDRESS, LSM9DS1XG_OUT_X_L_G, 6, &rawData[0]);  // Read the six raw data registers sequentially into data array
+  accel_gyro_data.data_total.gx = ((int16_t)rawData[1] << 8) | rawData[0];  // Turn the MSB and LSB into a signed 16-bit value
+  accel_gyro_data.data_total.gy = ((int16_t)rawData[3] << 8) | rawData[2];
+  accel_gyro_data.data_total.gz = ((int16_t)rawData[5] << 8) | rawData[4];
 }
-*/
